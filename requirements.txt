@@ -1,0 +1,13 @@
+numpy
+pandas
+tqdm
+
+transformers==4.6.1 # server3
+torch==1.7.0+cu110 -f https://download.pytorch.org/whl/torch_stable.html
+
+transformers==3.5.1 # server4
+torch==1.9.0+cu102 -f https://download.pytorch.org/whl/torch_stable.html
+
+tokenizers
+attrdict
+fastprogress
