@@ -72,6 +72,9 @@ def train(args, model, tokenizer, logger):
     mb = master_bar(range(int(args.num_train_epochs)))
     set_seed(args)
 
+    epoch_idx=0
+    if not args.from_init_weight: epoch_idx += int(args.checkpoint)
+
     for epoch in mb:
         epoch_iterator = progress_bar(train_dataloader, parent=mb)
         for step, batch in enumerate(epoch_iterator):
@@ -119,8 +122,9 @@ def train(args, model, tokenizer, logger):
                 model.zero_grad()
                 global_step += 1
 
+        epoch_idx += 1
         logger.info("***** Eval results *****")
-        results = evaluate(args, model, tokenizer, logger, global_step=global_step, tr_loss = loss.item())
+        results = evaluate(args, model, tokenizer, logger, epoch_idx = str(epoch_idx), tr_loss = loss.item())
 
         # model save
         #if (args.logging_steps > 0 and global_step % args.logging_steps == 0) or (float(results["accuracy"]) >= max_acc):
@@ -128,7 +132,7 @@ def train(args, model, tokenizer, logger):
         #if (args.logging_steps > 0 and max_acc < float(results["accuracy"])) or (float(results["accuracy"]) >= 0.8497):
             max_acc = float(results["accuracy"])
             # 모델 저장 디렉토리 생성
-            output_dir = os.path.join(args.output_dir, "model/checkpoint-{}".format(global_step))
+            output_dir = os.path.join(args.output_dir, "model/checkpoint-{}".format(epoch_idx))
             if not os.path.exists(output_dir):
                 os.makedirs(output_dir)
 
@@ -146,7 +150,7 @@ def train(args, model, tokenizer, logger):
     return global_step, tr_loss / global_step
 
 # 정답이 사전부착된 데이터로부터 평가하기 위한 함수
-def evaluate(args, model, tokenizer, logger, global_step = "", tr_loss = 1):
+def evaluate(args, model, tokenizer, logger, epoch_idx = "", tr_loss = 1):
     # 데이터셋 Load
     ## dataset: tensor형태의 데이터셋
     ## example: json형태의 origin 데이터셋
@@ -164,7 +168,7 @@ def evaluate(args, model, tokenizer, logger, global_step = "", tr_loss = 1):
     eval_dataloader = DataLoader(dataset, sampler=eval_sampler, batch_size=args.eval_batch_size)
 
     # Eval!
-    logger.info("***** Running evaluation {} *****".format(global_step))
+    logger.info("***** Running evaluation {} *****".format(epoch_idx))
     logger.info("  Num examples = %d", len(dataset))
     logger.info("  Batch size = %d", args.eval_batch_size)
 
@@ -229,7 +233,7 @@ def evaluate(args, model, tokenizer, logger, global_step = "", tr_loss = 1):
 
     with open(output_eval_file, out_file_type, encoding='utf-8') as f:
         f.write("train loss: {}\n".format(tr_loss))
-        f.write("global_step: {}\n".format(global_step))
+        f.write("epoch: {}\n".format(epoch_idx))
         for k in results.keys():
             f.write("{} : {}\n".format(k, results[k]))
         f.write("=======================================\n\n")

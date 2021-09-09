@@ -126,7 +126,7 @@ if __name__ == '__main__':
 
     cli_parser.add_argument("--checkpoint", type=str, default="10532")
 
-    cli_parser.add_argument("--output_dir", type=str, default="./roberta/my_model/ver1")
+    cli_parser.add_argument("--output_dir", type=str, default="./roberta/my_model/ver1_wDP")
     #cli_parser.add_argument("--output_dir", type=str, default="./roberta/baseline")#my_model/ver1_lr5X5")
     cli_parser.add_argument("--prem_max_sentence_length", type=int, default=18) # data["premise"]["merge"]["origin"]의 최대 개수 + 1(뒤에는 padding으로 보기)
     cli_parser.add_argument("--hypo_max_sentence_length", type=int, default=18)

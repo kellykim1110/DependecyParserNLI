@@ -119,7 +119,7 @@ if __name__ == '__main__':
 
     cli_parser.add_argument("--output_dir", type=str, default="./roberta/test2")
 
-    cli_parser.add_argument("--checkpoint", type=str, default="10532")
+    cli_parser.add_argument("--checkpoint", type=str, default="2")
 
     # https://github.com/KLUE-benchmark/KLUE-baseline/blob/main/run_all.sh
     # Model Hyper Parameter
