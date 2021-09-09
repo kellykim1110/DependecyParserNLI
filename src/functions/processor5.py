@@ -649,7 +649,7 @@ class KLUE_NLIExample(object):
         for depend1 in ['IP', 'AP', 'DP', 'VP', 'VNP', 'S', 'R', 'NP', 'L', 'X']:
             for depend2 in ['CMP', 'MOD', 'SBJ', 'AJT', 'CNJ', 'None', 'OBJ', "UNDEF"]:
                 depend2idx[depend1 + "-" + depend2] = len(depend2idx)
-                depend2idx[len(idx2depend)] = depend1 + "-" + depend2
+                idx2depend[len(idx2depend)] = depend1 + "-" + depend2
 
         if ([words for words in self.premise_koala if words[2][0] != words[2][1]] == []): merge_word[0].append([])
         else:
@@ -659,9 +659,9 @@ class KLUE_NLIExample(object):
                         merge_word[0].append([merge_index[0].index(words[2][0]), merge_index[0].index(words[2][1]),depend2idx[words[1][0]+"-"+words[1][1]]])
                     else:
                         idx = [merge_w[:-1] for merge_w in merge_word[0]].index([merge_index[0].index(words[2][0]), merge_index[0].index(words[2][1])])
-                        tag = idx2depend([merge_w[-1] for merge_w in merge_word[0]][idx]).split("-")
+                        tag = idx2depend[[merge_w[-1] for merge_w in merge_word[0]][idx]].split("-")
                         if (words[1][1] in ['SBJ', 'CNJ', 'OBJ']) and(tag[1] in ['CMP', 'MOD', 'AJT', 'None', "UNDEF"]):
-                            merge_word[0][idx][2] = tag[0]+"-"+words[1][1]
+                            merge_word[0][idx][2] = depend2idx[tag[0]+"-"+words[1][1]]
 
 
         if ([words for words in self.hypothesis_koala if words[2][0] != words[2][1]] == []): merge_word[1].append([])
@@ -671,10 +671,10 @@ class KLUE_NLIExample(object):
                     if not [merge_index[1].index(words[2][0]), merge_index[1].index(words[2][1])] in [merge_word[:-1] for merge_word in merge_word[1]]:
                         merge_word[1].append([merge_index[1].index(words[2][0]), merge_index[1].index(words[2][1]),depend2idx[words[1][0]+"-"+words[1][1]]])
                     else:
-                        idx = [merge_w[:-1] for merge_w in merge_word[1]].index([merge_index[0].index(words[2][0]), merge_index[0].index(words[2][1])])
-                        tag = idx2depend([merge_w[-1] for merge_w in merge_word[1]][idx]).split("-")
+                        idx = [merge_w[:-1] for merge_w in merge_word[1]].index([merge_index[1].index(words[2][0]), merge_index[1].index(words[2][1])])
+                        tag = idx2depend[[merge_w[-1] for merge_w in merge_word[1]][idx]].split("-")
                         if (words[1][1] in ['SBJ', 'CNJ', 'OBJ']) and(tag[1] in ['CMP', 'MOD', 'AJT', 'None', "UNDEF"]):
-                            merge_word[1][idx][2] = tag[0]+"-"+words[1][1]
+                            merge_word[1][idx][2] = depend2idx[tag[0]+"-"+words[1][1]]
 
         self.merge = {"premise":merge_index[0], "hypothesis":merge_index[1]}
         self.dependency = {"premise":merge_word[0], "hypothesis":merge_word[1]}
