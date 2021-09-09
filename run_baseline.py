@@ -21,7 +21,7 @@ def create_model(args):
     if args.model_name_or_path.split("/")[-2] == "roberta":
         # 모델 파라미터 Load
         config = RobertaConfig.from_pretrained(
-            'klue/roberta-base'#args.model_name_or_path#'klue/roberta-base'
+            args.model_name_or_path#'klue/roberta-base'
             if args.from_init_weight else os.path.join(args.output_dir,"model/checkpoint-{}".format(args.checkpoint)),
             cache_dir=args.cache_dir,
         )
@@ -33,7 +33,7 @@ def create_model(args):
         # tokenizer는 pre-trained된 것을 불러오는 과정이 아닌 불러오는 모델의 vocab 등을 Load
         # BertTokenizerFast로 되어있음
         tokenizer = AutoTokenizer.from_pretrained(
-            'klue/roberta-base'#args.model_name_or_path#'klue/roberta-base'
+            args.model_name_or_path#'klue/roberta-base'
             if args.from_init_weight else os.path.join(args.output_dir,"model/checkpoint-{}".format(args.checkpoint)),
             do_lower_case=args.do_lower_case,
             cache_dir=args.cache_dir,
@@ -42,7 +42,7 @@ def create_model(args):
         print(tokenizer)
 
         model = RobertaForSequenceClassification.from_pretrained(
-            'klue/roberta-base'#args.model_name_or_path#'klue/roberta-base'
+            args.model_name_or_path#'klue/roberta-base'
             if args.from_init_weight else os.path.join(args.output_dir,"model/checkpoint-{}".format(args.checkpoint)),
             cache_dir=args.cache_dir,
             config=config,
@@ -104,10 +104,10 @@ if __name__ == '__main__':
     cli_parser.add_argument("--predict_file", type=str, default="klue-nli-v1_dev.json")  # "klue-nli-v1_dev_sample_10.json")
 
     # roberta
-    cli_parser.add_argument("--model_name_or_path", type=str, default="./roberta/init_weight")
-    cli_parser.add_argument("--cache_dir", type=str, default="./roberta/init_weight")
-    # cli_parser.add_argument("--model_name_or_path", type=str, default="./roberta/init_weight_ver1")
-    # cli_parser.add_argument("--cache_dir", type=str, default="./roberta/init_weight_ver1")
+    #cli_parser.add_argument("--model_name_or_path", type=str, default="./roberta/init_weight")
+    #cli_parser.add_argument("--cache_dir", type=str, default="./roberta/init_weight")
+    cli_parser.add_argument("--model_name_or_path", type=str, default="./roberta/init_weight_ver1")
+    cli_parser.add_argument("--cache_dir", type=str, default="./roberta/init_weight_ver1")
     # (baseline)checkout-1074: acc = 85.13
 
     # model2: ( + sentence embedding + debias networks ) checkout-1981 = 0.694  # checkout-2239 = 0.6891
@@ -117,7 +117,7 @@ if __name__ == '__main__':
     # cli_parser.add_argument("--output_dir", type=str, default="./roberta/output1") # 0.7102
     # cli_parser.add_argument("--output_dir", type=str, default="./roberta/output2")
 
-    cli_parser.add_argument("--output_dir", type=str, default="./roberta/test1")
+    cli_parser.add_argument("--output_dir", type=str, default="./roberta/test2")
 
     cli_parser.add_argument("--checkpoint", type=str, default="10532")
 
@@ -129,7 +129,7 @@ if __name__ == '__main__':
     cli_parser.add_argument("--learning_rate", type=float, default=1e-5)
     cli_parser.add_argument("--train_batch_size", type=int, default=16)
     cli_parser.add_argument("--eval_batch_size", type=int, default=16)
-    cli_parser.add_argument("--num_train_epochs", type=int, default=5)
+    cli_parser.add_argument("--num_train_epochs", type=int, default=40)
 
     #cli_parser.add_argument("--save_steps", type=int, default=2000)
     cli_parser.add_argument("--logging_steps", type=int, default=100)
