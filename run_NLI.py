@@ -12,7 +12,7 @@ from src.model.model5 import RobertaForSequenceClassification
 
 from src.model.main_functions5 import train, evaluate, predict
 #from src.model.main_functions_baseline import train, evaluate, predict
-#from src.model.main_functions_sentence import train, evaluate, predict
+
 from src.functions.utils import init_logger, set_seed
 
 import sys
@@ -102,32 +102,66 @@ if __name__ == '__main__':
     cli_parser = argparse.ArgumentParser()
 
     # Directory
+
+    #------------------------------------------------------------------------------------------------
     # cli_parser.add_argument("--data_dir", type=str, default="./data")
     # cli_parser.add_argument("--train_file", type=str, default="klue-nli-v1_train.json")
     # cli_parser.add_argument("--eval_file", type=str, default="klue-nli-v1_dev.json")
     # cli_parser.add_argument("--predict_file", type=str, default="klue-nli-v1_dev.json") #"klue-nli-v1_dev_sample_10.json")
+    # ------------------------------------------------------------------------------------------------
     cli_parser.add_argument("--data_dir", type=str, default="./data/merge")
-    cli_parser.add_argument("--train_file", type=str, default='merge_1re_klue_nli_train.json')  # "klue-nli-v1_train.json")
-    cli_parser.add_argument("--eval_file", type=str, default='merge_1re_klue_nli_dev.json')  # "klue-nli-v1_dev.json")
-    cli_parser.add_argument("--predict_file", type=str, default='merge_1re_klue_nli_dev.json')  # "klue-nli-v1_dev.json")  # "klue-nli-v1_dev_sample_10.json")
+
+    cli_parser.add_argument("--train_file", type=str, default='merge_1re_klue_nli_train.json')
+    cli_parser.add_argument("--eval_file", type=str, default='merge_1re_klue_nli_dev.json')
+    cli_parser.add_argument("--predict_file", type=str, default='merge_1re_klue_nli_dev.json')
+    # ------------------------------------------------------------------------------------------------
+    # cli_parser.add_argument("--train_file", type=str, default='merge_re3_klue_nli_train.json')
+    # cli_parser.add_argument("--eval_file", type=str, default='merge_re3_klue_nli_dev.json')
+    # cli_parser.add_argument("--predict_file", type=str, default='merge_re3_klue_nli_dev.json')
+    # ------------------------------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------
+    # cli_parser.add_argument("--train_file", type=str, default='merge_re4_klue_nli_train.json')
+    # cli_parser.add_argument("--eval_file", type=str, default='merge_re4_klue_nli_dev.json')
+    # cli_parser.add_argument("--predict_file", type=str, default='merge_re4_klue_nli_dev.json')
+    # ------------------------------------------------------------------------------------------------
+
     # roberta
     # cli_parser.add_argument("--model_name_or_path", type=str, default="./roberta/init_weight")
     # cli_parser.add_argument("--cache_dir", type=str, default="./roberta/init_weight")
     cli_parser.add_argument("--model_name_or_path", type=str, default="./roberta/init_weight_ver1")
     cli_parser.add_argument("--cache_dir", type=str, default="./roberta/init_weight_ver1")
-    # (baseline)checkout-1074: acc = 85.13
+    # (baseline)checkout-1074: acc = 85.13  # checkout-4 89.91
 
-    # model2: ( + sentence embedding + debias networks ) checkout-1981 = 0.694  # checkout-2239 = 0.6891
-    #cli_parser.add_argument("--output_dir", type=str, default="./roberta/output")
+    cli_parser.add_argument("--checkpoint", type=str, default="3")
 
-    # model1: ( + sentence embedding )
-    #cli_parser.add_argument("--output_dir", type=str, default="./roberta/output1") # 0.7102
-    #cli_parser.add_argument("--output_dir", type=str, default="./roberta/output2")
+    #------------------------------------------------------------------------------------------------------------
 
-    cli_parser.add_argument("--checkpoint", type=str, default="10532")
+    # merge_1re_klue_nli_train.json
+    ## SIC1
+    #cli_parser.add_argument("--output_dir", type=str, default="./roberta/my_model/ver1_5")   # checkout-3 90.31 checkout-4 90.22
 
-    cli_parser.add_argument("--output_dir", type=str, default="./roberta/my_model/ver1_wDP")
-    #cli_parser.add_argument("--output_dir", type=str, default="./roberta/my_model/ver1") # checkout-27 91.13
+    #cli_parser.add_argument("--output_dir", type=str, default="./roberta/my_model/ver1_4")   # checkout-5 90.44  # ver1_3에서 NP-MOD와 같은 tag정보를 안주고 서로 연결되었다는 정보만 주면??
+    #cli_parser.add_argument("--output_dir", type=str, default="./roberta/my_model/ver1_3")   # checkout-5 90.31
+
+    #cli_parser.add_argument("--output_dir", type=str, default="./roberta/my_model/ver1_2")   # checkout-5 90.29
+
+    #cli_parser.add_argument("--output_dir", type=str, default="./roberta/my_model/ver1_woDP")# checkout-4  90.53 # ver1_wDP에서 NP-MOD와 같은 tag정보를 안주고 서로 연결되었다는 정보만 주기
+    cli_parser.add_argument("--output_dir", type=str, default="./roberta/my_model/ver1_wDP") # checkout-3 90.6
+    #cli_parser.add_argument("--output_dir", type=str, default="./roberta/my_model/ver1")     # checkout-5 90.11   # checkout-27 91.13
+
+    ## SIC2
+    #cli_parser.add_argument("--output_dir", type=str, default="./roberta/my_model/ver2_wDP") # checkout-4 90.24
+
+    # merge_3_klue_nli_train.json
+    # cli_parser.add_argument("--output_dir", type=str, default="./roberta/my_model/ver3_wDP") # checkout-5 90.31
+
+    # merge_4_klue_nli_train.json
+    # cli_parser.add_argument("--output_dir", type=str, default="./roberta/my_model/ver4_wDP") # checkout-4 90.49
+
+
+    # ------------------------------------------------------------------------------------------------------------
+
+    # ver1 = 18     ver3,4 = 27
     cli_parser.add_argument("--prem_max_sentence_length", type=int, default=18) # data["premise"]["merge"]["origin"]의 최대 개수 + 1(뒤에는 padding으로 보기)
     cli_parser.add_argument("--hypo_max_sentence_length", type=int, default=18)
 
@@ -138,7 +172,7 @@ if __name__ == '__main__':
     cli_parser.add_argument("--learning_rate", type=float, default=1e-5)
     cli_parser.add_argument("--train_batch_size", type=int, default=16)
     cli_parser.add_argument("--eval_batch_size", type=int, default=16)
-    cli_parser.add_argument("--num_train_epochs", type=int, default=40)
+    cli_parser.add_argument("--num_train_epochs", type=int, default=5)
 
     #cli_parser.add_argument("--save_steps", type=int, default=2000)
     cli_parser.add_argument("--logging_steps", type=int, default=100)
@@ -157,11 +191,11 @@ if __name__ == '__main__':
     cli_parser.add_argument("--no_cuda", type=bool, default=False)
 
     # Running Mode
-    cli_parser.add_argument("--from_init_weight", type=bool, default=True)
+    cli_parser.add_argument("--from_init_weight", type=bool, default=True)#False)#True)
     cli_parser.add_argument("--add_vocab", type=bool, default=False)
-    cli_parser.add_argument("--do_train", type=bool, default=True)
+    cli_parser.add_argument("--do_train", type=bool, default=True)#False)#True)
     cli_parser.add_argument("--do_eval", type=bool, default=False)
-    cli_parser.add_argument("--do_predict", type=bool, default=False)
+    cli_parser.add_argument("--do_predict", type=bool, default=False)#True)#False)
 
     cli_args = cli_parser.parse_args()
 

@@ -31,13 +31,14 @@ class RobertaForSequenceClassification(BertPreTrainedModel):
 
         # 입력 토큰에서 token1, token2가 있을 때 (index of token1, index of token2)를 하나의 span으로 보고 이에 대한 정보를 학습
         self.span_info_collect = SICModel1(config)
-        #self.span_info_collect = SICModel2(config) # collate_func 3_2
+        #self.span_info_collect = SICModel2(config)
 
         # biaffine을 통해 premise와 hypothesis span에 대한 정보를 결합후 정규화
         self.parsing_info_collect = PICModel1(config, prem_max_sentence_length, hypo_max_sentence_length) # 구묶음 + tag 정보 + klue-biaffine attention + bilistm + klue-bilinear classification
         #self.parsing_info_collect = PICModel2(config, prem_max_sentence_length, hypo_max_sentence_length) # 구묶음 + bilistm + klue-bilinear classification
         #self.parsing_info_collect = PICModel3(config, prem_max_sentence_length, hypo_max_sentence_length) # 구묶음 + tag 정보 + bilistm + klue-bilinear classification
-        #self.parsing_info_collect = PICModel1(config, prem_max_sentence_length, hypo_max_sentence_length)  # 구묶음 + tag 정보 + biaffine attention + bilistm + bilinear classification
+        #self.parsing_info_collect = PICModel4(config, prem_max_sentence_length, hypo_max_sentence_length)  # 구묶음 + tag 정보(1) + bilistm + bilinear classification
+        #self.parsing_info_collect = PICModel5(config, prem_max_sentence_length, hypo_max_sentence_length)  # 구묶음 + tag 정보 + biaffine attention + bilistm + bilinear classification
 
         self.init_weights()
 
@@ -95,7 +96,6 @@ class SICModel1(nn.Module):
 
     def forward(self, hidden_states, prem_word_idxs, hypo_word_idxs):
         # (batch, max_pre_sen, seq_len) @ (batch, seq_len, hidden) = (batch, max_pre_sen, hidden)
-        batch_size = hidden_states.shape[0]
         prem_word_idxs = prem_word_idxs.squeeze(1)
         hypo_word_idxs = hypo_word_idxs.squeeze(1)
 
@@ -120,8 +120,9 @@ class SICModel2(nn.Module):
         self.W_h_4 = nn.Linear(self.hidden_size, self.hidden_size)
 
     def forward(self, hidden_states, prem_word_idxs, hypo_word_idxs):
-        print(prem_word_idxs.shape, hypo_word_idxs.shape)
-        exit()
+        prem_word_idxs = prem_word_idxs.squeeze(1).type(torch.LongTensor).to("cuda")
+        hypo_word_idxs = hypo_word_idxs.squeeze(1).type(torch.LongTensor).to("cuda")
+
         Wp1_h = self.W_p_1(hidden_states)  # (bs, length, hidden_size)
         Wp2_h = self.W_p_2(hidden_states)
         Wp3_h = self.W_p_3(hidden_states)
@@ -179,12 +180,11 @@ class SICModel2(nn.Module):
             W4_hi_end_emb = torch.cat((W4_hi_end_emb, sub_W4_hi_end_emb.unsqueeze(0)))
 
         # [w1*hi, w2*hj, w3(hi-hj), w4(hi⊗hj)]
-        hypo_span = W1_hi_emb + W2_hi_emb + (W3_hi_start_emb - W3_hi_end_emb) + torch.mul(W4_hi_start_emb,
-                                                                                          W4_hi_end_emb)  # (batch_size, hypo_max_seq_length, hidden_size)
-
+        hypo_span = W1_hi_emb + W2_hi_emb + (W3_hi_start_emb - W3_hi_end_emb) + torch.mul(W4_hi_start_emb, W4_hi_end_emb)  # (batch_size, hypo_max_seq_length, hidden_size)
         hypo_h_ij = torch.tanh(hypo_span)
 
         h_ij = [prem_h_ij, hypo_h_ij]
+
         return h_ij
 
 
@@ -281,7 +281,7 @@ class PICModel1(nn.Module):
 
         # biaffine attention
         # hidden_states: (batch_size, max_prem_len, hidden_size)
-        # span: (batch, max_prem_len, 3*hidden_size)
+        # span: (batch, max_prem_len, hidden_size)
         # -> biaffine_outputs: [batch_size, 100, max_prem_len,  max_prem_len]
         prem_span = self.reduction1(prem_span)
         prem_hidden_states = self.reduction2(prem_hidden_states)
@@ -487,7 +487,7 @@ class PICModel3(nn.Module):
 
         # bilinear
         # hidden_states: (batch_size, max_prem_len, hidden_size)
-        # span: (batch, max_prem_len, 3*hidden_size)
+        # span: (batch, max_prem_len, hidden_size)
         # -> bilinear_outputs: [batch_size, max_prem_len, 100]
         prem_span = self.reduction1(prem_span)
         prem_hidden_states = self.reduction2(prem_hidden_states)
@@ -523,6 +523,97 @@ class PICModel4(nn.Module):
         self.hypo_max_sentence_length = hypo_max_sentence_length
         self.num_labels = config.num_labels
 
+        self.reduction1 = nn.Linear(self.hidden_size , int(self.hidden_size // 3))
+        self.reduction2 = nn.Linear(self.hidden_size , int(self.hidden_size // 3))
+        self.reduction3 = nn.Linear(self.hidden_size, int(self.hidden_size // 3))
+        self.reduction4 = nn.Linear(self.hidden_size, int(self.hidden_size // 3))
+
+        self.tag1 = BiLinear(int(self.hidden_size // 3), int(self.hidden_size // 3), 100)
+        self.tag2 = BiLinear(int(self.hidden_size // 3), int(self.hidden_size // 3), 100)
+
+        self.bi_lism_1 = nn.LSTM(input_size=100, hidden_size=self.hidden_size//2, num_layers=1, bidirectional=True)
+        self.bi_lism_2 = nn.LSTM(input_size=100, hidden_size=self.hidden_size//2, num_layers=1, bidirectional=True)
+
+        self.bilinear = BiLinear(self.hidden_size, self.hidden_size, self.num_labels)
+
+    def forward(self, hidden_states, batch_size, prem_span, hypo_span):
+        # hidden_states: [[batch_size, word_idxs, hidden_size], []]
+        # span: [batch_size, max_sentence_length, max_sentence_length]
+        # word_idxs: [batch_size, seq_length]
+        # -> sequence_outputs: [batch_size, seq_length, hidden_size]
+
+        prem_hidden_states= hidden_states[0]
+        hypo_hidden_states= hidden_states[1]
+        #print(prem_hidden_states.shape, hypo_hidden_states.shape, prem_span.shape, hypo_span.shape)
+
+        # span: (batch, max_prem_len, 3) -> (batch, max_prem_len, 3*hidden_size)
+        new_prem_span = torch.tensor([], dtype=torch.long).to("cuda")
+        new_hypo_span = torch.tensor([], dtype=torch.long).to("cuda")
+
+        for i, (p_span, h_span) in enumerate(zip(prem_span.tolist(), hypo_span.tolist())):
+            p_span_head = torch.tensor([span[0] for span in p_span]).to("cuda") #(max_prem_len)
+            p_span_tail = torch.tensor([span[1] for span in p_span]).to("cuda")
+
+            p_span_head = torch.index_select(prem_hidden_states[i], 0, p_span_head) #(max_prem_len, hidden_size)
+            p_span_tail = torch.index_select(prem_hidden_states[i], 0, p_span_tail)
+
+            n_p_span = p_span_head + p_span_tail
+            new_prem_span = torch.cat((new_prem_span, n_p_span.unsqueeze(0)))
+
+            h_span_head = torch.tensor([span[0] for span in h_span]).to("cuda")  # (max_hypo_len)
+            h_span_tail = torch.tensor([span[1] for span in h_span]).to("cuda")
+
+            h_span_head = torch.index_select(hypo_hidden_states[i], 0, h_span_head)  # (max_hypo_len, hidden_size)
+            h_span_tail = torch.index_select(hypo_hidden_states[i], 0, h_span_tail)
+
+            n_h_span = h_span_head + h_span_tail
+            new_hypo_span = torch.cat((new_hypo_span, n_h_span.unsqueeze(0)))
+
+        prem_span = new_prem_span
+        hypo_span = new_hypo_span
+
+        del new_prem_span
+        del new_hypo_span
+
+        # bilinear
+        # hidden_states: (batch_size, max_prem_len, hidden_size)
+        # span: (batch, max_prem_len, hidden_size)
+        # -> bilinear_outputs: [batch_size, max_prem_len, 100]
+        prem_span = self.reduction1(prem_span)
+        prem_hidden_states = self.reduction2(prem_hidden_states)
+        hypo_span = self.reduction3(hypo_span)
+        hypo_hidden_states = self.reduction4(hypo_hidden_states)
+
+        prem_bilinear_outputs= self.tag1(prem_hidden_states, prem_span)
+        hypo_bilinear_outputs = self.tag2(hypo_hidden_states, hypo_span)
+
+        # bilstm
+        # biaffine_outputs: [batch_size, max_prem_len, 100]
+        # -> hidden_states: [batch_size, hidden_size]
+
+        prem_bilinear_outputs = prem_bilinear_outputs. transpose(0,1)
+        hypo_bilinear_outputs = hypo_bilinear_outputs.transpose(0,1)
+
+        prem_bilstm_outputs, prem_states = self.bi_lism_1(prem_bilinear_outputs)
+        hypo_bilstm_outputs, hypo_states = self.bi_lism_2(hypo_bilinear_outputs)
+
+
+        prem_hidden_states = prem_states[0].transpose(0, 1).contiguous().view(batch_size, -1)
+        hypo_hidden_states = hypo_states[0].transpose(0, 1).contiguous().view(batch_size, -1)
+
+        outputs = self.bilinear(prem_hidden_states, hypo_hidden_states)
+
+        return outputs
+
+
+class PICModel5(nn.Module):
+    def __init__(self, config, prem_max_sentence_length, hypo_max_sentence_length):
+        super().__init__()
+        self.hidden_size = config.hidden_size
+        self.prem_max_sentence_length = prem_max_sentence_length
+        self.hypo_max_sentence_length = hypo_max_sentence_length
+        self.num_labels = config.num_labels
+
         # 구문구조 종류
         depend2idx = {"None": 0};
         idx2depend = {0: "None"};
@@ -540,16 +631,19 @@ class PICModel4(nn.Module):
         self.reduction4 = nn.Linear(self.hidden_size, int(self.hidden_size // 6))
 
         self.W_1_bilinear = nn.Bilinear(int(self.hidden_size // 6), int(self.hidden_size // 6), 100, bias=False)
-        self.W_1_linear = nn.Linear(int(self.hidden_size // 6) + int(self.hidden_size // 6), 100)
+        self.W_1_linear1 = nn.Linear(int(self.hidden_size // 6), 100)
+        self.W_1_linear2 = nn.Linear(int(self.hidden_size // 6), 100)
         self.W_2_bilinear = nn.Bilinear(int(self.hidden_size // 6), int(self.hidden_size // 6), 100, bias=False)
-        self.W_2_linear = nn.Linear(int(self.hidden_size // 6) + int(self.hidden_size // 6), 100)
+        self.W_2_linear1 = nn.Linear(int(self.hidden_size // 6), 100)
+        self.W_2_linear2 = nn.Linear(int(self.hidden_size // 6), 100)
 
         self.bi_lism_1 = nn.LSTM(input_size=100, hidden_size=self.hidden_size//2, num_layers=1, bidirectional=True)
         self.bi_lism_2 = nn.LSTM(input_size=100, hidden_size=self.hidden_size//2, num_layers=1, bidirectional=True)
 
         self.dropout = nn.Dropout(config.hidden_dropout_prob)  # 일반화된 정보를 사용
         self.biaffine_W_bilinear = nn.Bilinear((2*(self.hidden_size//2)),(2*(self.hidden_size//2)), self.num_labels, bias=False)
-        self.biaffine_W_linear = nn.Linear(2*(self.hidden_size//2) + 2*(self.hidden_size//2), self.num_labels)
+        self.biaffine_W_linear1 = nn.Linear(2 * (self.hidden_size//2), self.num_labels)
+        self.biaffine_W_linear2 = nn.Linear(2 * (self.hidden_size // 2), self.num_labels)
         self.reset_parameters()
 
     def forward(self, hidden_states, batch_size, prem_span, hypo_span):
@@ -604,8 +698,8 @@ class PICModel4(nn.Module):
         hypo_span = self.reduction3(hypo_span)
         hypo_hidden_states = self.reduction4(hypo_hidden_states)
 
-        prem_biaffine_outputs= self.W_1_bilinear(prem_span, prem_hidden_states) + self.W_1_linear(torch.cat((prem_span, prem_hidden_states), dim = -1))
-        hypo_biaffine_outputs = self.W_2_bilinear(hypo_span, hypo_hidden_states) + self.W_2_linear(torch.cat((hypo_span, hypo_hidden_states), dim = -1))
+        prem_biaffine_outputs= self.W_1_bilinear(prem_span, prem_hidden_states) + self.W_1_linear1(prem_span) + self.W_1_linear2(prem_hidden_states)
+        hypo_biaffine_outputs = self.W_2_bilinear(hypo_span, hypo_hidden_states) + self.W_2_linear1(hypo_span) + self.W_2_linear2(hypo_hidden_states)
 
         # bilstm
         # biaffine_outputs: [batch_size, max_sentence_length, hidden_size]
@@ -623,15 +717,18 @@ class PICModel4(nn.Module):
         # prem_hidden_states: (batch_size, max_prem_len)
         # hypo_hidden_states: (batch_size, max_hypo_len)
         # -> outputs: (batch_size, num_labels)
-        outputs = self.biaffine_W_bilinear(prem_hidden_states, hypo_hidden_states) + self.biaffine_W_linear(torch.cat((prem_hidden_states, hypo_hidden_states), dim=-1))
+        outputs = self.biaffine_W_bilinear(prem_hidden_states, hypo_hidden_states) + self.biaffine_W_linear1(prem_hidden_states) +self.biaffine_W_linear2(hypo_hidden_states)
 
         return outputs
 
     def reset_parameters(self):
         self.W_1_bilinear.reset_parameters()
-        self.W_1_linear.reset_parameters()
+        self.W_1_linear1.reset_parameters()
+        self.W_1_linear2.reset_parameters()
         self.W_2_bilinear.reset_parameters()
-        self.W_2_linear.reset_parameters()
+        self.W_2_linear1.reset_parameters()
+        self.W_2_linear2.reset_parameters()
 
         self.biaffine_W_bilinear.reset_parameters()
-        self.biaffine_W_linear.reset_parameters()
+        self.biaffine_W_linear1.reset_parameters()
+        self.biaffine_W_linear2.reset_parameters()

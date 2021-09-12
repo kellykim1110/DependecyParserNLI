@@ -10,6 +10,8 @@ from transformers import RobertaConfig
 from src.model.model_baseline import RobertaForSequenceClassification
 
 from src.model.main_functions_baseline import train, evaluate, predict
+#from src.model.main_functions_sentence import train, evaluate, predict
+
 from src.functions.utils import init_logger, set_seed
 
 import sys
@@ -46,8 +48,6 @@ def create_model(args):
             if args.from_init_weight else os.path.join(args.output_dir,"model/checkpoint-{}".format(args.checkpoint)),
             cache_dir=args.cache_dir,
             config=config,
-            #prem_max_sentence_length=args.prem_max_sentence_length,
-            #hypo_max_sentence_length=args.hypo_max_sentence_length,
         )
 
 
@@ -108,7 +108,7 @@ if __name__ == '__main__':
     #cli_parser.add_argument("--cache_dir", type=str, default="./roberta/init_weight")
     cli_parser.add_argument("--model_name_or_path", type=str, default="./roberta/init_weight_ver1")
     cli_parser.add_argument("--cache_dir", type=str, default="./roberta/init_weight_ver1")
-    # (baseline)checkout-1074: acc = 85.13
+    # (baseline)checkout-1074: acc = 85.13  # checkout-4 89.91
 
     # model2: ( + sentence embedding + debias networks ) checkout-1981 = 0.694  # checkout-2239 = 0.6891
     # cli_parser.add_argument("--output_dir", type=str, default="./roberta/output")
@@ -129,7 +129,7 @@ if __name__ == '__main__':
     cli_parser.add_argument("--learning_rate", type=float, default=1e-5)
     cli_parser.add_argument("--train_batch_size", type=int, default=16)
     cli_parser.add_argument("--eval_batch_size", type=int, default=16)
-    cli_parser.add_argument("--num_train_epochs", type=int, default=40)
+    cli_parser.add_argument("--num_train_epochs", type=int, default=5)
 
     #cli_parser.add_argument("--save_steps", type=int, default=2000)
     cli_parser.add_argument("--logging_steps", type=int, default=100)
