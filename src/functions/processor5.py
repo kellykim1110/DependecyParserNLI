@@ -495,7 +495,7 @@ class KLUE_NLIProcessor(DataProcessor):
 
         return examples
 
-    def get_train_examples(self, data_dir, filename=None):
+    def get_train_examples(self, data_dir, filename=None, depend_embedding = None):
         """
         Returns the training examples from the data directory.
 
@@ -514,9 +514,9 @@ class KLUE_NLIProcessor(DataProcessor):
             os.path.join(data_dir, self.train_file if filename is None else filename), "r", encoding="utf-8"
         ) as reader:
             input_data = json.load(reader)
-        return self._create_examples(input_data, 'train')
+        return self._create_examples(input_data, 'train', self.train_file if filename is None else filename)
 
-    def get_dev_examples(self, data_dir, filename=None):
+    def get_dev_examples(self, data_dir, filename=None, depend_embedding = None):
         """
         Returns the evaluation example from the data directory.
 
@@ -534,7 +534,7 @@ class KLUE_NLIProcessor(DataProcessor):
             os.path.join(data_dir, self.dev_file if filename is None else filename), "r", encoding="utf-8"
         ) as reader:
             input_data = json.load(reader)
-        return self._create_examples(input_data, "dev")
+        return self._create_examples(input_data, "dev", self.dev_file if filename is None else filename)
 
     def get_example_from_input(self, input_dictionary):
         # guid, genre, premise, hypothesis
@@ -554,21 +554,23 @@ class KLUE_NLIProcessor(DataProcessor):
         )]
         return examples
 
-    def _create_examples(self, input_data, set_type):
+    def _create_examples(self, input_data, set_type, data_file):
         is_training = set_type == "train"
         num = 0
         examples = []
+        parsing = data_file.split("/")[-1].split("_")[0]
+        if parsing == "merge": parsing = "koala"
         for entry in tqdm(input_data):
             guid = entry["guid"]
             if "genre" in entry: genre = entry["genre"]
             else: genre = entry["source"]
             premise = entry["premise"]["origin"]
             premise_merge = entry["premise"]["merge"]["origin"]
-            premise_koala = entry["premise"]["merge"]["koala"]
+            premise_koala = entry["premise"]["merge"][parsing]
 
             hypothesis = entry["hypothesis"]["origin"]
             hypothesis_merge = entry["hypothesis"]["merge"]["origin"]
-            hypothesis_koala = entry["hypothesis"]["merge"]["koala"]
+            hypothesis_koala = entry["hypothesis"]["merge"][parsing]
 
             gold_label = None
             label = None

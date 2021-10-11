@@ -18,7 +18,7 @@ from src.functions.metric import get_score
 from functools import partial
 
 def train(args, model, tokenizer, logger):
-    max_acc =0.74 #0.7409 # 0.8513
+    max_acc =0.90
     # 학습에 사용하기 위한 dataset Load
     ## dataset: tensor형태의 데이터셋
     ## all_input_ids,
