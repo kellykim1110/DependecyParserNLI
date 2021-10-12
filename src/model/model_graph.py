@@ -155,6 +155,8 @@ class GATModel(nn.Module):
             # 같은 노드가 없도록 변경하고 그에 맞게 adj도 변경
             p_word = list(set([span[0] for span in p_span]+[span[1] for span in p_span]))
             p_dep = list(set([span[2] for span in p_span]))
+            if ((len(p_word)+len(p_dep)) < 27): p_dep += [0 for _ in range(0, (27-(len(p_word)+len(p_dep))))]
+
             p_node = torch.cat((torch.index_select(prem_hidden_states[i], 0, torch.tensor(p_word).to("cuda")), self.depend_embedding(torch.tensor(p_dep).to("cuda"))))
 
             matrix_12 = torch.zeros([len(p_word), len(p_dep)], dtype=torch.int)
@@ -205,14 +207,16 @@ class GATModel(nn.Module):
             prem_gat_func = GAT(prem_g,
                         in_dim=self.hidden_size,
                         hidden_dim=self.hidden_size,
-                        out_dim=self.hidden_size,
+                        out_dim=100, #self.hidden_size,
                         num_heads=2).to("cuda")
 
             prem_gat_output = prem_gat_func(p_node)
-            prem_gat = torch.cat((prem_gat, prem_gat_output.unsqueeze(0)))
+            prem_gat = torch.cat((prem_gat, prem_gat_output.unsqueeze(0))) # [batch, max_prem_len, hidden_size]
 
             h_word = list(set([span[0] for span in h_span] + [span[1] for span in h_span]))
             h_dep = list(set([span[2] for span in h_span]))
+            if ((len(h_word) + len(h_dep)) < 27): h_dep += [0 for _ in range(0, (27 - (len(h_word) + len(h_dep))))]
+
             h_node = torch.cat((torch.index_select(hypo_hidden_states[i], 0, torch.tensor(h_word).to("cuda")),
                                 self.depend_embedding(torch.tensor(h_dep).to("cuda"))))
 
@@ -234,19 +238,16 @@ class GATModel(nn.Module):
             hypo_gat_func = GAT(hypo_g,
                                 in_dim=self.hidden_size,
                                 hidden_dim=self.hidden_size,
-                                out_dim=self.hidden_size,
+                                out_dim=100, #self.hidden_size,
                                 num_heads=2).to("cuda")
 
             hypo_gat_output = hypo_gat_func(h_node)
-            hypo_gat = torch.cat((hypo_gat, hypo_gat_output.unsqueeze(0)))
+            hypo_gat = torch.cat((hypo_gat, hypo_gat_output.unsqueeze(0))) # [batch, max_hypo_len, hidden_size]
 
         # 여기부터 다시
         # bilstm
         # biaffine_outputs: [batch_size, max_prem_len,  100] -> [max_prem_len, batch_size, 100]
         # -> hidden_states: [batch_size, hidden_size]
-        print(prem_gat.shape)
-        print(hypo_gat.shape)
-        exit()
         prem_gat = prem_gat.transpose(0,1)
         hypo_gat = hypo_gat.transpose(0,1)
 
