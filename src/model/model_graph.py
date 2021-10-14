@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import networkx as nx
 from dgl import DGLGraph
 import dgl
-from src.functions.GAT import GAT
+from src.functions.GAT import NET
 
 import numpy as np
 
@@ -44,7 +44,8 @@ class RobertaForSequenceClassification(BertPreTrainedModel):
         self.span_info_collect = SICModel1(config)
 
         # biaffine을 통해 premise와 hypothesis span에 대한 정보를 결합후 정규화
-        self.gat = GATModel(config, prem_max_sentence_length, hypo_max_sentence_length) # 구묶음 + tag 정보 + klue-biaffine attention + bilistm + klue-bilinear classification
+        #self.gat = GATModel1(config, prem_max_sentence_length, hypo_max_sentence_length) # dependency parser
+        self.gat = GATModel2(config, prem_max_sentence_length,hypo_max_sentence_length)   # dependency connecting
 
         self.init_weights()
 
@@ -111,7 +112,7 @@ class SICModel1(nn.Module):
         return [prem, hypo]
 
 
-class GATModel(nn.Module):
+class GATModel1(nn.Module):
     def __init__(self, config, prem_max_sentence_length, hypo_max_sentence_length):
         super().__init__()
         self.hidden_size = config.hidden_size
@@ -129,6 +130,16 @@ class GATModel(nn.Module):
         self.depend2idx = depend2idx
         self.idx2depend = idx2depend
         self.depend_embedding = nn.Embedding(len(idx2depend), self.hidden_size, padding_idx=0).to("cuda")
+
+        self.prem_gat_func = NET(in_dim=self.hidden_size,
+                                hidden_dim=self.hidden_size,
+                                out_dim=self.hidden_size,
+                                num_heads=2)
+
+        self.hypo_gat_func = NET(in_dim=self.hidden_size,
+                                 hidden_dim=self.hidden_size,
+                                 out_dim=self.hidden_size,
+                                 num_heads=2)
 
         self.bi_lism_1 = nn.LSTM(input_size=100, hidden_size=self.hidden_size//2, num_layers=1, bidirectional=True)
         self.bi_lism_2 = nn.LSTM(input_size=100, hidden_size=self.hidden_size//2, num_layers=1, bidirectional=True)
@@ -156,7 +167,6 @@ class GATModel(nn.Module):
             p_word = list(set([span[0] for span in p_span]+[span[1] for span in p_span]))
             p_dep = list(set([span[2] for span in p_span]))
             if ((len(p_word)+len(p_dep)) < 27): p_dep += [0 for _ in range(0, (27-(len(p_word)+len(p_dep))))]
-
             p_node = torch.cat((torch.index_select(prem_hidden_states[i], 0, torch.tensor(p_word).to("cuda")), self.depend_embedding(torch.tensor(p_dep).to("cuda"))))
 
             matrix_12 = torch.zeros([len(p_word), len(p_dep)], dtype=torch.int)
@@ -201,16 +211,10 @@ class GATModel(nn.Module):
             # plt.show()
 
             prem_g= dgl.from_networkx(prem_g)
-            #print(prem_g)
             prem_g = prem_g.to("cuda")
 
-            prem_gat_func = GAT(prem_g,
-                        in_dim=self.hidden_size,
-                        hidden_dim=self.hidden_size,
-                        out_dim=100, #self.hidden_size,
-                        num_heads=2).to("cuda")
+            prem_gat_output = self.prem_gat_func(prem_g, p_node)
 
-            prem_gat_output = prem_gat_func(p_node)
             prem_gat = torch.cat((prem_gat, prem_gat_output.unsqueeze(0))) # [batch, max_prem_len, hidden_size]
 
             h_word = list(set([span[0] for span in h_span] + [span[1] for span in h_span]))
@@ -229,19 +233,173 @@ class GATModel(nn.Module):
                 (torch.cat((torch.zeros([len(h_word), len(h_word)], dtype=torch.int), matrix_12), dim=1),
                  torch.cat((matrix_21, torch.zeros([len(h_dep), len(h_dep)], dtype=torch.int)), dim=1)))
 
+            hypo_g = self.numpy_to_graph(Adj=h_adj, type_graph='nx', node_features={'feat': h_node})
+
+            hypo_g = dgl.from_networkx(hypo_g)
+            hypo_g = hypo_g.to("cuda")
+
+            hypo_gat_output = self.hypo_gat_func(hypo_g, h_node)
+
+            hypo_gat = torch.cat((hypo_gat, hypo_gat_output.unsqueeze(0))) # [batch, max_hypo_len, hidden_size]
+
+        # 여기부터 다시
+        # bilstm
+        # biaffine_outputs: [batch_size, max_prem_len,  100] -> [max_prem_len, batch_size, 100]
+        # -> hidden_states: [batch_size, hidden_size]
+        prem_gat = prem_gat.transpose(0,1)
+        hypo_gat = hypo_gat.transpose(0,1)
+
+        prem_bilstm_outputs, prem_states = self.bi_lism_1(prem_gat)
+        hypo_bilstm_outputs, hypo_states = self.bi_lism_2(hypo_gat)
+
+
+        prem_hidden_states = prem_states[0].transpose(0, 1).contiguous().view(batch_size, -1)
+        hypo_hidden_states = hypo_states[0].transpose(0, 1).contiguous().view(batch_size, -1)
+
+        outputs = self.bilinear(prem_hidden_states, hypo_hidden_states)
+
+        return outputs
+
+    def numpy_to_graph(self, Adj, type_graph='dgl', node_features=None):
+        '''Convert numpy arrays to graph
+
+        Parameters
+        ----------
+        A : mxm array
+            Adjacency matrix
+        type_graph : str
+            'dgl' or 'nx'
+        node_features : dict
+            Optional, dictionary with key=feature name, value=list of size m
+            Allows user to specify node features
+
+        Returns
+
+        -------
+        Graph of 'type_graph' specification
+        '''
+        np_Adj = Adj.cpu().detach().numpy()
+        G = nx.from_numpy_array(np_Adj).to_directed()
+
+        if node_features != None:
+            for n in G.nodes():
+                for k, v in node_features.items():
+                    G.nodes[n][k] = v[n]
+
+        if type_graph == 'nx':
+            return G
+
+        G = G.to_directed()
+
+        if node_features != None:
+            node_attrs = list(node_features.keys())
+        else:
+            node_attrs = []
+
+        g = dgl.from_networkx(G, node_attrs=node_attrs, edge_attrs=['weight'])
+        return g
+
+
+class GATModel2(nn.Module):
+    def __init__(self, config, prem_max_sentence_length, hypo_max_sentence_length):
+        super().__init__()
+        self.hidden_size = config.hidden_size
+        self.prem_max_sentence_length = prem_max_sentence_length
+        self.hypo_max_sentence_length = hypo_max_sentence_length
+        self.num_labels = config.num_labels
+
+        # 구문구조 종류
+        depend2idx = {"None": 0};
+        idx2depend = {0: "None"};
+        for depend1 in ['IP', 'AP', 'DP', 'VP', 'VNP', 'S', 'R', 'NP', 'L', 'X']:
+            for depend2 in ['CMP', 'MOD', 'SBJ', 'AJT', 'CNJ', 'None', 'OBJ', "UNDEF"]:
+                depend2idx[depend1 + "-" + depend2] = len(depend2idx)
+                idx2depend[len(idx2depend)] = depend1 + "-" + depend2
+        self.depend2idx = depend2idx
+        self.idx2depend = idx2depend
+        self.depend_embedding = nn.Embedding(len(idx2depend), self.hidden_size, padding_idx=0).to("cuda")
+
+        self.prem_gat_func = NET(in_dim=self.hidden_size,
+                                hidden_dim=self.hidden_size,
+                                out_dim=self.hidden_size,
+                                num_heads=2)
+
+        self.hypo_gat_func = NET(in_dim=self.hidden_size,
+                                 hidden_dim=self.hidden_size,
+                                 out_dim=self.hidden_size,
+                                 num_heads=2)
+
+        self.bi_lism_1 = nn.LSTM(input_size=100, hidden_size=self.hidden_size//2, num_layers=1, bidirectional=True)
+        self.bi_lism_2 = nn.LSTM(input_size=100, hidden_size=self.hidden_size//2, num_layers=1, bidirectional=True)
+
+        self.bilinear = BiLinear(self.hidden_size, self.hidden_size, self.num_labels)
+
+    def forward(self, hidden_states, batch_size, prem_span, hypo_span):
+        # hidden_states: [[batch_size, word_idxs, hidden_size], []]
+        # span: [batch_size, max_sentence_length, max_sentence_length]
+        # word_idxs: [batch_size, seq_length]
+        # -> sequence_outputs: [batch_size, seq_length, hidden_size]
+
+        prem_hidden_states= hidden_states[0]
+        hypo_hidden_states= hidden_states[1]
+        #print(prem_hidden_states.shape, hypo_hidden_states.shape, prem_span.shape, hypo_span.shape)
+
+        # span: (batch, max_prem_len, 3) -> (batch, 3*max_prem_len, hidden_size)
+        prem_gat = torch.tensor([], dtype=torch.long).to("cuda")
+        hypo_gat = torch.tensor([], dtype=torch.long).to("cuda")
+
+        for i, (p_span, h_span) in enumerate(zip(prem_span.tolist(), hypo_span.tolist())):
+            # node랑 adj변경
+            # 현재 같은 노드가 다시 등장
+            # 같은 노드가 없도록 변경하고 그에 맞게 adj도 변경
+            # 연결 정보만 주도록 수정
+            p_word = list(set([span[0] for span in p_span]+[span[1] for span in p_span]))
+            if (len(p_word) < 27): p_word += [0 for _ in range(0, (27 - len(p_word)))]
+            p_node = torch.index_select(prem_hidden_states[i], 0, torch.tensor(p_word).to("cuda"))
+
+            p_adj = torch.zeros([len(p_word), len(p_word)], dtype=torch.int)
+            for a,b in zip([span[0] for span in p_span],[span[1] for span in p_span]):
+                p_adj[a][b] = 1
+
+            prem_g = self.numpy_to_graph(Adj=p_adj, type_graph='nx',node_features={'feat': p_node})
+            # # Graph check
+            # print(prem_g)
+            # print(prem_g.nodes)
+            # print([span[0] for span in p_span])
+            # print([span[2] for span in p_span])
+            # print([span[1] for span in p_span])
+            # print(prem_g.edges)
+            # print(prem_g.adj)
+            # pos = nx.spring_layout(prem_g)  # pos = nx.nx_agraph.graphviz_layout(G)
+            # nx.draw_networkx(prem_g, pos)
+            # labels = nx.get_edge_attributes(prem_g, 'weight')
+            # nx.draw_networkx_edge_labels(prem_g, pos, edge_labels=labels)
+            # plt.show()
+
+            prem_g= dgl.from_networkx(prem_g)
+            prem_g = prem_g.to("cuda")
+
+            prem_gat_output = self.prem_gat_func(prem_g, p_node)
+
+            prem_gat = torch.cat((prem_gat, prem_gat_output.unsqueeze(0))) # [batch, max_prem_len, hidden_size]
+
+
+            h_word = list(set([span[0] for span in h_span] + [span[1] for span in h_span]))
+            if (len(h_word) < 27): h_word += [0 for _ in range(0, (27 - len(h_word)))]
+
+            h_node = torch.index_select(hypo_hidden_states[i], 0, torch.tensor(h_word).to("cuda"))
+
+            h_adj = torch.zeros([len(h_word), len(h_word)], dtype=torch.int)
+            for a, b in zip([span[0] for span in h_span], [span[1] for span in h_span]):
+                h_adj[a][b] = 1
 
             hypo_g = self.numpy_to_graph(Adj=h_adj, type_graph='nx', node_features={'feat': h_node})
 
             hypo_g = dgl.from_networkx(hypo_g)
             hypo_g = hypo_g.to("cuda")
 
-            hypo_gat_func = GAT(hypo_g,
-                                in_dim=self.hidden_size,
-                                hidden_dim=self.hidden_size,
-                                out_dim=100, #self.hidden_size,
-                                num_heads=2).to("cuda")
+            hypo_gat_output = self.hypo_gat_func(hypo_g, h_node)
 
-            hypo_gat_output = hypo_gat_func(h_node)
             hypo_gat = torch.cat((hypo_gat, hypo_gat_output.unsqueeze(0))) # [batch, max_hypo_len, hidden_size]
 
         # 여기부터 다시

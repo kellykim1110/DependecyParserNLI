@@ -197,7 +197,9 @@ if __name__ == '__main__':
     ## SIC2
     #cli_parser.add_argument("--output_dir", type=str, default="./roberta/my_model/parsing/ver4_wDP_SIC2") # checkout-5 90.53    90.50 ± 0.03
 
-    cli_parser.add_argument("--output_dir", type=str, default="./roberta/gat_model/parsing/mean_pooling")
+    #GAT
+    #cli_parser.add_argument("--output_dir", type=str, default="./roberta/gat_model/parsing/mean_pooling")           # checkout-5 90.53     # checkout-4 90.38  # checkout-3 90.36
+    cli_parser.add_argument("--output_dir", type=str,default="./roberta/gat_model/parsing/mean_pooling/connecting")  # checkout-3 90.80     90.65 ± 0.15
 
     # ------------------------------------------------------------------------------------------------------------
 
